@@ -53,7 +53,7 @@ namespace vgheri.SmashItEngine.core
         private System.Threading.ReaderWriterLockSlim usersLock = new System.Threading.ReaderWriterLockSlim();
         private System.Threading.ReaderWriterLockSlim concurrentUsersLock = new System.Threading.ReaderWriterLockSlim();
         private System.Threading.ReaderWriterLockSlim statsLock = new System.Threading.ReaderWriterLockSlim();
-        private System.Threading.ReaderWriterLockSlim resultsLock = new System.Threading.ReaderWriterLockSlim();
+        private System.Threading.ReaderWriterLockSlim resultsLock = new System.Threading.ReaderWriterLockSlim();        
 
         #region Locks
 
@@ -172,11 +172,18 @@ namespace vgheri.SmashItEngine.core
 
         private void HandleTestCompletedTimerElapsed(object sender, ElapsedEventArgs e)
         {
+            while (this.ReadConcurrentUsersCounter() != 0)
+            {
+
+            }
             // Stop the stopwatch
             this.testTimeElapsed.Stop();
-            // Stop the timers           
-            this.spawnTimer.Stop();
-            this.spawnTimer.Close();
+            // Stop the timers
+            if (this.spawnTimer.Enabled)
+            {
+                this.spawnTimer.Stop();
+                this.spawnTimer.Close();
+            }
             this.testProgressTimer.Stop();
             this.testProgressTimer.Close();
             var eventArgs = CreateTestCompletedEventArgs(this.executionResults);
@@ -185,7 +192,16 @@ namespace vgheri.SmashItEngine.core
 
         async void HandleSpawnTimerElapsed(object sender, ElapsedEventArgs e)
         {
-            await ExecuteScenario();
+            if (this.ReadTotalUsersCounter() < this.scenario.Users)
+            {
+                await ExecuteScenario();
+            }
+            else
+            {
+                // Stop the timers           
+                this.spawnTimer.Stop();
+                this.spawnTimer.Close();
+            }
         }
 
         private async Task ExecuteScenario()
