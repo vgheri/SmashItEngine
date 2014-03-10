@@ -70,7 +70,7 @@ namespace vgheri.SmashItEngine.core
             this.testTimeElapsed = new Stopwatch();
             this.executionResults = new List<HttpActionResult>();
             this.progressUpdateFrequency = 5000; // Send an update out to the client every x seconds
-            InitialiseTimers();            
+            InitialiseTimers();
         }
 
         private void InitialiseTimers()
@@ -175,6 +175,7 @@ namespace vgheri.SmashItEngine.core
             HttpResponseMessage response = null;
             HttpClient httpClient = new HttpClient();
             Stopwatch watch = new Stopwatch();
+            var isTimeout = false;
             try 
             {
                 httpClient.BaseAddress = this.scenario.BaseAddress;
@@ -185,31 +186,25 @@ namespace vgheri.SmashItEngine.core
                 if (!response.IsSuccessStatusCode)
                 {
                     this.errors++;
-                }
-                // Log 
-                result = new HttpActionResult()
-                {
-                    RequestTimedOut = false,
-                    ResponseMessage = response,
-                    ResponseTime = watch.ElapsedMilliseconds,
-                    ConcurrentUsers = this.currentNumberOfConcurrentUsers
-                };
+                }                
             }
             catch (TaskCanceledException ex)
             {
                 watch.Stop();
+                isTimeout = true;
                 this.timeouts++;
-                result = new HttpActionResult()
-                {
-                    RequestTimedOut = true,
-                    ResponseMessage = null,
-                    ResponseTime = watch.ElapsedMilliseconds,
-                    ConcurrentUsers = this.currentNumberOfConcurrentUsers
-                };
+                response = null;
             }
             finally 
             {         
-                this.hits++;                
+                this.hits++;
+                result = new HttpActionResult()
+                {
+                    RequestTimedOut = isTimeout,
+                    ResponseMessage = response,
+                    ResponseTime = watch.ElapsedMilliseconds,
+                    ConcurrentUsers = this.currentNumberOfConcurrentUsers
+                };
             }
             
             return result;
@@ -217,12 +212,11 @@ namespace vgheri.SmashItEngine.core
 
         private async Task<bool> Pause()
         {
-            Task<bool> t = Task.Factory.StartNew(() =>
+            var ended = await Task.Run(async () =>
             {
-                System.Threading.Thread.Sleep(this.scenario.PauseDuration * 1000);
+                await Task.Delay(this.scenario.PauseDuration * 1000);                
                 return true;
             });            
-            bool ended = await t;
             return ended;
         }
 

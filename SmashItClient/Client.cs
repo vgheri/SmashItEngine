@@ -16,7 +16,7 @@ namespace vgheri.SmashItClient
             var testDuration = 90;
             var model = UserGrowthProgressionModel.Linear;
             var timeout = 3000;
-            var pauseDuration = 1;
+            var pauseDuration = 3;
             var engine = new Engine(users, address, testDuration, model, pauseDuration, timeout);
             engine.TestProgressed += new Engine.TestProgressEventHandler(HandleProgressEvent);
             engine.TestCompleted += new Engine.TestCompletedEventHandler(HandleCompletedEvent);
