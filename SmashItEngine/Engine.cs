@@ -136,8 +136,9 @@ namespace vgheri.SmashItEngine.core
         }
 
         private async Task ExecuteScenario()
-        {
+        {            
             IncreaseTotalUsersCounter();
+            //Console.WriteLine("User " + this.userSpawned + " running on thread id " + System.Threading.Thread.CurrentThread.ManagedThreadId);
             IncreaseConcurrentUsersCounter();
             // Execute the scenario
             foreach (var step in scenario.Steps)
@@ -242,12 +243,9 @@ namespace vgheri.SmashItEngine.core
             var averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
             var hits = this.hits;
             var errors = this.errors;
-            var timeouts = this.timeouts;
-            var averageResponseTime = 0.0;
-            if (results != null && results.Count > 0)
-            {
-                averageResponseTime = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).Average();
-            }            
+            var timeouts = this.timeouts;            
+            var temp = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).ToList();
+            var averageResponseTime = temp.Count > 0 ? temp.Average() : 0;
             return new TestProgressEventArgs(timeElapsed, users, averageConcurrentUsers, hits, errors, timeouts, averageResponseTime);
         }
 
@@ -257,7 +255,8 @@ namespace vgheri.SmashItEngine.core
             var actualTestDuration = this.testTimeElapsed.Elapsed.TotalSeconds;
             var maxConcurrentUsers = this.executionResults.Select(r => r.ConcurrentUsers).Max();
             var averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
-            var averageResponseTime = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).Average();
+            var temp = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).ToList();
+            var averageResponseTime = temp.Count > 0 ? temp.Average() : 0;            
             return new TestCompletedEventArgs(users, actualTestDuration, maxConcurrentUsers,
                 averageConcurrentUsers, averageResponseTime, this.hits, this.errors, this.timeouts);
         }
