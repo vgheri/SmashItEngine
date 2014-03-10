@@ -50,6 +50,59 @@ namespace vgheri.SmashItEngine.core
         private Timer testProgressTimer;
         private Timer testCompletedTimer;
 
+        private System.Threading.ReaderWriterLockSlim usersLock = new System.Threading.ReaderWriterLockSlim();
+        private System.Threading.ReaderWriterLockSlim concurrentUsersLock = new System.Threading.ReaderWriterLockSlim();
+        private System.Threading.ReaderWriterLockSlim statsLock = new System.Threading.ReaderWriterLockSlim();
+        private System.Threading.ReaderWriterLockSlim resultsLock = new System.Threading.ReaderWriterLockSlim();
+
+        #region Locks
+
+        private int ReadTotalUsersCounter()
+        {
+            usersLock.EnterReadLock();
+            var users = this.userSpawned;
+            usersLock.ExitReadLock();
+            return users;
+        }
+
+        private void IncreaseTotalUsersCounter()
+        {
+            usersLock.EnterWriteLock();
+            this.userSpawned++;
+            usersLock.ExitWriteLock();
+        }
+
+        private void IncreaseConcurrentUsersCounter()
+        {
+            concurrentUsersLock.EnterWriteLock();
+            this.currentNumberOfConcurrentUsers++;
+            concurrentUsersLock.ExitWriteLock();
+        }
+
+        private void DecreaseConcurrentUsersCounter()
+        {
+            concurrentUsersLock.EnterWriteLock();
+            this.currentNumberOfConcurrentUsers--;
+            concurrentUsersLock.ExitWriteLock();
+        }
+
+        private int ReadConcurrentUsersCounter()
+        {
+            concurrentUsersLock.EnterReadLock();
+            var concurrentUsers = this.currentNumberOfConcurrentUsers;
+            concurrentUsersLock.ExitReadLock();
+            return concurrentUsers;
+        }
+
+        private void AddToExecutionResults(HttpActionResult result)
+        {
+            resultsLock.EnterWriteLock();
+            this.executionResults.Add(result);
+            resultsLock.ExitWriteLock();
+        }
+        
+        #endregion
+
         Func<HttpRequestMessage, HttpRequestMessage> Factory;
 
         public Engine(int totalUsers, string targetAddress, int testDuration,
@@ -144,7 +197,7 @@ namespace vgheri.SmashItEngine.core
             foreach (var step in scenario.Steps)
             {
                 var result = await ExecuteAction(Factory(step));
-                this.executionResults.Add(result);
+                this.AddToExecutionResults(result);
                 var pauseDone = await Pause();
             }
             DecreaseConcurrentUsersCounter();
@@ -184,27 +237,33 @@ namespace vgheri.SmashItEngine.core
                 watch.Start();
                 response = await httpClient.SendAsync(step, HttpCompletionOption.ResponseContentRead);                
                 watch.Stop();
-                if (!response.IsSuccessStatusCode)
-                {
-                    this.errors++;
-                }                
+                                
             }
             catch (TaskCanceledException ex)
             {
                 watch.Stop();
-                isTimeout = true;
-                this.timeouts++;
+                isTimeout = true;                
                 response = null;
             }
             finally 
-            {         
+            {
+                this.statsLock.EnterWriteLock();
                 this.hits++;
+                if (response != null && !response.IsSuccessStatusCode)
+                {
+                    this.errors++;
+                }
+                if (isTimeout)
+                {
+                    this.timeouts++;
+                }
+                this.statsLock.ExitWriteLock();
                 result = new HttpActionResult()
                 {
                     RequestTimedOut = isTimeout,
                     ResponseMessage = response,
                     ResponseTime = watch.ElapsedMilliseconds,
-                    ConcurrentUsers = this.currentNumberOfConcurrentUsers
+                    ConcurrentUsers = this.ReadConcurrentUsersCounter()
                 };
             }
             
@@ -221,44 +280,65 @@ namespace vgheri.SmashItEngine.core
             return ended;
         }
 
-        private void IncreaseTotalUsersCounter()
+        private double GetAverageResponseTime(List<HttpActionResult> results)
         {
-            this.userSpawned++;
+            var averageResponseTime = 0.0;
+            this.resultsLock.EnterReadLock();
+            try
+            {
+                var temp = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).ToList();
+                averageResponseTime = temp.Count > 0 ? temp.Average() : 0;
+            }
+            finally
+            {
+                this.resultsLock.ExitReadLock();
+            }            
+            return averageResponseTime;
         }
 
-        private void IncreaseConcurrentUsersCounter()
+        private double GetAverageConcurrentUsers(List<HttpActionResult> results)
         {
-            this.currentNumberOfConcurrentUsers++;
-        }
-
-        private void DecreaseConcurrentUsersCounter()
-        {
-            this.currentNumberOfConcurrentUsers--;
+            var averageConcurrentUsers = 0.0;
+            this.resultsLock.EnterReadLock();
+            try
+            {
+                averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
+            }
+            finally
+            {
+                this.resultsLock.ExitReadLock();
+            }
+            return averageConcurrentUsers;
         }
 
         private TestProgressEventArgs CreateTestProgressEventArgs(List<HttpActionResult> results)
         {            
             var timeElapsed = this.testTimeElapsed.Elapsed.TotalSeconds;
-            var users = this.userSpawned;
-            var averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
+            var users = this.ReadTotalUsersCounter();
+            var averageConcurrentUsers = this.GetAverageConcurrentUsers(results);
+            this.statsLock.EnterReadLock();
             var hits = this.hits;
             var errors = this.errors;
-            var timeouts = this.timeouts;            
-            var temp = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).ToList();
-            var averageResponseTime = temp.Count > 0 ? temp.Average() : 0;
+            var timeouts = this.timeouts;
+            this.statsLock.ExitReadLock();
+            var averageResponseTime = this.GetAverageResponseTime(results);
             return new TestProgressEventArgs(timeElapsed, users, averageConcurrentUsers, hits, errors, timeouts, averageResponseTime);
         }
 
         private TestCompletedEventArgs CreateTestCompletedEventArgs(List<HttpActionResult> results)
-        {         
-            var users = this.userSpawned;
+        {
+            var users = this.ReadTotalUsersCounter();
             var actualTestDuration = this.testTimeElapsed.Elapsed.TotalSeconds;
             var maxConcurrentUsers = this.executionResults.Select(r => r.ConcurrentUsers).Max();
-            var averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
-            var temp = results.Where(r => r.RequestTimedOut == false).Select(r => r.ResponseTime).ToList();
-            var averageResponseTime = temp.Count > 0 ? temp.Average() : 0;            
+            var averageConcurrentUsers = this.GetAverageConcurrentUsers(results);
+            var averageResponseTime = this.GetAverageResponseTime(results);
+            this.statsLock.EnterReadLock();
+            var hits = this.hits;
+            var errors = this.errors;
+            var timeouts = this.timeouts;
+            this.statsLock.ExitReadLock();
             return new TestCompletedEventArgs(users, actualTestDuration, maxConcurrentUsers,
-                averageConcurrentUsers, averageResponseTime, this.hits, this.errors, this.timeouts);
+                averageConcurrentUsers, averageResponseTime, hits, errors, timeouts);
         }
     }
 }
