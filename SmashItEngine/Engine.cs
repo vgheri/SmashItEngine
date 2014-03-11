@@ -227,8 +227,7 @@ namespace vgheri.SmashItEngine.core
         {
             double frequency = 0;            
             if (this.scenario.UserGrowthProgressionModel == UserGrowthProgressionModel.Linear)
-            {
-                
+            {                
                 frequency = (((double)this.scenario.Duration) / ((double)this.scenario.Users)) * 1000;                
             }
             else
@@ -318,7 +317,10 @@ namespace vgheri.SmashItEngine.core
             this.resultsLock.EnterReadLock();
             try
             {
-                averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
+                if (results.Count > 0)
+                {
+                    averageConcurrentUsers = results.Select(r => r.ConcurrentUsers).Average();
+                }                
             }
             finally
             {
