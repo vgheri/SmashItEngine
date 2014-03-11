@@ -209,10 +209,13 @@ namespace vgheri.SmashItEngine.core
             IncreaseTotalUsersCounter();
             //Console.WriteLine("User " + this.userSpawned + " running on thread id " + System.Threading.Thread.CurrentThread.ManagedThreadId);
             IncreaseConcurrentUsersCounter();
+            HttpClient httpClient = new HttpClient();
+            httpClient.BaseAddress = this.scenario.BaseAddress;
+            httpClient.Timeout = TimeSpan.FromMilliseconds(this.scenario.Timeout);
             // Execute the scenario
             foreach (var step in scenario.Steps)
             {
-                var result = await ExecuteAction(Factory(step));
+                var result = await ExecuteAction(httpClient, Factory(step));
                 this.AddToExecutionResults(result);
                 var pauseDone = await Pause();
             }
@@ -238,17 +241,14 @@ namespace vgheri.SmashItEngine.core
             return frequency;
         }
 
-        private async Task<HttpActionResult> ExecuteAction(HttpRequestMessage step)
+        private async Task<HttpActionResult> ExecuteAction(HttpClient httpClient, HttpRequestMessage step)
         {
             HttpActionResult result = null;
-            HttpResponseMessage response = null;
-            HttpClient httpClient = new HttpClient();
+            HttpResponseMessage response = null;            
             Stopwatch watch = new Stopwatch();
             var isTimeout = false;
             try 
-            {
-                httpClient.BaseAddress = this.scenario.BaseAddress;
-                httpClient.Timeout = TimeSpan.FromMilliseconds(this.scenario.Timeout);
+            {                
                 watch.Start();
                 response = await httpClient.SendAsync(step, HttpCompletionOption.ResponseContentRead);                
                 watch.Stop();
