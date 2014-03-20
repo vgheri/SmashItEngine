@@ -11,9 +11,9 @@ namespace vgheri.SmashItClient
     {
         static void Main(string[] args)
         {
-            var users = 500;
-            var address = @"http://showtime-eurogiciel.azurewebsites.net/";
-            var testDuration = 90;
+            var users = 2000;            
+            var address = @"http://localhost/";
+            var testDuration = 60;
             var model = UserGrowthProgressionModel.Linear;
             var timeout = 3000;
             var pauseDuration = 3;
@@ -22,7 +22,8 @@ namespace vgheri.SmashItClient
             engine.TestCompleted += new Engine.TestCompletedEventHandler(HandleCompletedEvent);
 
             engine.AddStep(null, "GET", "", null, null, null)
-                .AddStep(null, "GET", "en-US/Product/17/wh2014sh1-super-wash", null, null, null)
+                .AddStep(null, "GET", "test/123", null, null, null)
+                // Add more steps
                 .Run();
 
             Console.Read();
